@@ -165,6 +165,9 @@ class CSVReader(object):
         return self.times[sound_name]
 
 
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+
+
 class Trainer(object):
 
     time_data_csv_file = 'vowels/timedata.csv'
@@ -223,6 +226,8 @@ class Trainer(object):
 
         if method == "SVC":
             clf = svm.SVC(gamma='scale')
+        elif method == "LDA":
+            clf = LinearDiscriminantAnalysis(solver='lsqr')
         elif method == "SVR":
             clf = svm.SVC(gamma='scale')
         elif method == 'LinearSVC':
@@ -233,8 +238,8 @@ class Trainer(object):
             clf = svm.NuSVC(gamma='scale')
         elif method == 'NuSVR':
             clf = svm.NuSVR(gamma='scale')
-        elif method == 'OneClassSVM':
-            clf = svm.OneClassSVM(gamma='scale')
+        # elif method == 'OneClassSVM':
+        #     clf = svm.OneClassSVM(gamma='scale')
         else:
             return
 
@@ -256,19 +261,38 @@ class Trainer(object):
                     mfcc_generator = MFCC_Generator(file_name, start_end_t)
                     ret = mfcc_generator.calculate_mfc_coeffs()
                     classifier_num = self.training_vowels.index(vowel)
+
+
                     for coeff in ret:
 
-                        prediction = clf.predict([coeff])
-                        if prediction[0] == classifier_num:
+                        prediction = clf.predict([coeff])[0]
+
+                        # continuous prediction -> need to map
+                        if not prediction == int(prediction):
+                            # print "original prediction:",prediction
+                            best_fitting_vowel_id = -1
+                            best_fitting_vowel_dist = 1000
+                            for i in range(len(self.training_vowels)):
+                                if np.abs(i-prediction) < best_fitting_vowel_dist:
+                                    best_fitting_vowel_dist = np.abs(i-prediction)
+                                    best_fitting_vowel_id = i
+                            prediction = best_fitting_vowel_id
+                            # print "mapped prediction:",prediction
+
+                        if prediction == classifier_num:
                             self.training_vowels_accuracy[classifier_num][0] += 1
                         else:
                             self.training_vowels_accuracy[classifier_num][1] += 1
+
+                        # print vowel,": prediction:",prediction,"\tcorrect:",classifier_num,"training vowel accuracy:",self.training_vowels_accuracy
+                        # time.sleep(.1)
+
 
         return self.training_vowels_accuracy
 
 def test_method(trainer, method, vowels, pct_to_train=.75):
 
-    print "method:", method
+    print "\nmethod:", method
     res = trainer.train(pct_to_train=pct_to_train, method=method)
     for i in range(len(res)):
         vowel = vowels[i]
@@ -283,16 +307,20 @@ if __name__ == "__main__":
     # sound_name: 'b03ei'
     # file_name: 'vowels/audioclips/m01ae.wav'
     # about ~ 30 length 12 vectors for average mfc_coeffs output
-
-    # -- Sample code
-    # for method in ['LinearSVC',  'LinearSVR',   'NuSVC', 'NuSVR', 'OneClassSVM', 'SVC', 'SVR']:
-    #     trainer = Trainer()
-    #     test_method(trainer, method)
+    # all methods: ['LinearSVC',  'LinearSVR',   'NuSVC', 'NuSVR', 'SVC', 'SVR', "LDA"
+    # LinearSVC and LinearSVR perform very poorly
+    # LDA is not working as expected, only predicts '1'
 
 
-    training_vowels = ["oo", "er", "ah"]
-    trainer = Trainer(training_vowels)
-    test_method(trainer,"SVR", training_vowels)
+    training_vowels = ["oa", "er"] #[ "ae", "ah", "aw", "eh", "ei", "er", "ih", "iy", "oa", "oo", "uh", "uw" ]
+
+    for method in [ 'NuSVC', 'NuSVR', 'SVC', 'SVR']:
+        trainer = Trainer(training_vowels)
+        test_method(trainer, method, training_vowels)
+
+
+    # trainer = Trainer(training_vowels)
+    # test_method(trainer,"LDA", training_vowels)
 
 
 
