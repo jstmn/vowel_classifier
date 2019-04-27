@@ -51,8 +51,8 @@ class MFCC_Generator(object):
 
         pad_signal_length = num_frames * frame_step + frame_length
         z = np.zeros((pad_signal_length - signal_length))
-        pad_signal = np.append(emphasized_signal,
-                               z)  # Pad Signal to make sure that all frames have equal number of samples without truncating any samples from the original signal
+        pad_signal = np.append(emphasized_signal, z)
+        # Pad Signal to make sure that all frames have equal number of samples without truncating any samples from the original signal
 
         indices = np.tile(np.arange(0, frame_length), (num_frames, 1)) + np.tile(
             np.arange(0, num_frames * frame_step, frame_step), (frame_length, 1)).T
@@ -199,7 +199,13 @@ class Trainer(object):
     def get_vowels(self):
         return self.training_vowels
 
-    def train(self, pct_to_train=.9, method="SVC"):
+    def combine_ret(self, ret_list_of_vectors, num_of_vectors):
+        x = []
+        for n in range(0, num_of_vectors):
+            x = np.concatenate(([x, ret_list_of_vectors[n]]), axis=None)
+        return x
+
+    def train(self, pct_to_train=.9, method="SVC", MYSPECIAL_UMBER=1):
 
         directory = "vowels/audioclips"
 
@@ -218,11 +224,19 @@ class Trainer(object):
                     start_end_t = self.csv_reader.get_start_end_time_from_fname(file_name)
                     mfcc_generator = MFCC_Generator(file_name, start_end_t)
                     ret = mfcc_generator.calculate_mfc_coeffs()
-                    for mcf_coeff in ret:
-                        if random.randint(0,1000) > rand_int_min:
-                            self.mcf_coeffs.append(mcf_coeff)
-                            classifier_num = self.training_vowels.index(vowel)
-                            self.classifier.append(classifier_num)
+
+                    combined_data = self.combine_ret(ret, MYSPECIAL_UMBER)
+                    # print type(combined_data)
+                    # print combined_data
+                    # print np.shape(combined_data)
+                    # # print combined_data.dtype
+                    # # print "=-=-=-=-=-"
+                    self.mcf_coeffs.append(combined_data)
+
+                    # for mcf_coeff in ret:
+                    #     self.mcf_coeffs.append(mcf_coeff)
+                    classifier_num = self.training_vowels.index(vowel)
+                    self.classifier.append(classifier_num)
 
         if method == "SVC":
             clf = svm.SVC(gamma='scale')
@@ -263,43 +277,73 @@ class Trainer(object):
                     classifier_num = self.training_vowels.index(vowel)
 
 
-                    for coeff in ret:
+                    combined_data = self.combine_ret(ret,MYSPECIAL_UMBER)
+                    classifier_num = self.training_vowels.index(vowel)
 
-                        prediction = clf.predict([coeff])[0]
+                    prediction = clf.predict([combined_data])[0]
 
                         # continuous prediction -> need to map
-                        if not prediction == int(prediction):
-                            # print "original prediction:",prediction
-                            best_fitting_vowel_id = -1
-                            best_fitting_vowel_dist = 1000
-                            for i in range(len(self.training_vowels)):
-                                if np.abs(i-prediction) < best_fitting_vowel_dist:
-                                    best_fitting_vowel_dist = np.abs(i-prediction)
-                                    best_fitting_vowel_id = i
-                            prediction = best_fitting_vowel_id
-                            # print "mapped prediction:",prediction
+                    if not prediction == int(prediction):
+                        # print "original prediction:",prediction
+                        best_fitting_vowel_id = -1
+                        best_fitting_vowel_dist = 1000
+                        for i in range(len(self.training_vowels)):
+                            if np.abs(i-prediction) < best_fitting_vowel_dist:
+                                best_fitting_vowel_dist = np.abs(i-prediction)
+                                best_fitting_vowel_id = i
+                        prediction = best_fitting_vowel_id
+                        # print "mapped prediction:",prediction
 
-                        if prediction == classifier_num:
-                            self.training_vowels_accuracy[classifier_num][0] += 1
-                        else:
-                            self.training_vowels_accuracy[classifier_num][1] += 1
+                    if prediction == classifier_num:
+                        self.training_vowels_accuracy[classifier_num][0] += 1
+                    else:
+                        self.training_vowels_accuracy[classifier_num][1] += 1
 
                         # print vowel,": prediction:",prediction,"\tcorrect:",classifier_num,"training vowel accuracy:",self.training_vowels_accuracy
                         # time.sleep(.1)
 
 
+
+
+                    # for coeff in ret:
+
+                    #     prediction = clf.predict([coeff])[0]
+
+                    #     # continuous prediction -> need to map
+                    #     if not prediction == int(prediction):
+                    #         # print "original prediction:",prediction
+                    #         best_fitting_vowel_id = -1
+                    #         best_fitting_vowel_dist = 1000
+                    #         for i in range(len(self.training_vowels)):
+                    #             if np.abs(i-prediction) < best_fitting_vowel_dist:
+                    #                 best_fitting_vowel_dist = np.abs(i-prediction)
+                    #                 best_fitting_vowel_id = i
+                    #         prediction = best_fitting_vowel_id
+                    #         # print "mapped prediction:",prediction
+
+                    #     if prediction == classifier_num:
+                    #         self.training_vowels_accuracy[classifier_num][0] += 1
+                    #     else:
+                    #         self.training_vowels_accuracy[classifier_num][1] += 1
+
+                    #     # print vowel,": prediction:",prediction,"\tcorrect:",classifier_num,"training vowel accuracy:",self.training_vowels_accuracy
+                    #     # time.sleep(.1)
+
+
         return self.training_vowels_accuracy
 
 def test_method(trainer, method, vowels, pct_to_train=.75):
-
     print "\nmethod:", method
-    res = trainer.train(pct_to_train=pct_to_train, method=method)
-    for i in range(len(res)):
-        vowel = vowels[i]
-        corr_cnt = res[i][0]
-        err_cnt = res[i][1]
-        corr_pct = corr_cnt/float(corr_cnt + err_cnt)
-        print "  ",vowel," corr %:",corr_pct
+
+    for q in range(1, 3):
+        res = trainer.train(pct_to_train=pct_to_train, method=method, MYSPECIAL_UMBER=q)
+        print "number of vectors:", q
+        for i in range(len(res)):
+            vowel = vowels[i]
+            corr_cnt = res[i][0]
+            err_cnt = res[i][1]
+            corr_pct = corr_cnt/float(corr_cnt + err_cnt)
+            print "  ", vowel, " corr %:", corr_pct
 
 if __name__ == "__main__":
 
