@@ -6,21 +6,27 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import plot, ion, show
 import csv
 import os
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn import linear_model
 from sklearn import svm
 import random
 import time
+from scipy.interpolate import interp1d
+import tensorflow as tf
+from tensorflow import keras
+import tensorflow
 
 class MFCC_Generator(object):
 
+    def __init__(self):
 
-    def __init__(self, sound_file, start_end_t):
+        self.csv_reader = CSVReader(TF_Trainer.time_data_csv_file)
+        self.calculated_coeffs = {}
 
-        self.sound_file = sound_file
-        self.start_t = start_end_t[0]
-        self.end_t = start_end_t[1]
+    def calculate_mfc_coeffs(self, sound_file, normalize=True):
 
-    def calculate_mfc_coeffs(self, normalize=True):
+        if sound_file in self.calculated_coeffs:
+            return self.calculated_coeffs[sound_file]
 
         # Constants
         pre_emphasis = .97
@@ -33,11 +39,12 @@ class MFCC_Generator(object):
         cep_lifter = 22
 
         # ae_wav_file = "vowels/men/m01ae.wav"
+        start_end_t = self.csv_reader.get_start_end_time_from_fname(sound_file)
 
-        sample_rate, signal = scipy.io.wavfile.read(self.sound_file)
+        sample_rate, signal = scipy.io.wavfile.read(sound_file)
         sample_rate = float(sample_rate)
 
-        signal = signal[ int( self.start_t * sample_rate) : int(self.end_t * sample_rate) ]  # Keep the first 3.5 seconds
+        signal = signal[ int( start_end_t[0] * sample_rate) : int(start_end_t[1] * sample_rate) ]  # Keep the first 3.5 seconds
 
         # y(t) = x(t) - pre_emphasis*x(t-1)
         emphasized_signal = np.append(signal[0], signal[1:] - pre_emphasis * signal[:-1])
@@ -92,7 +99,7 @@ class MFCC_Generator(object):
         mfcc -= (np.mean(mfcc, axis=0) + 1e-8)
 
         if normalize:
-            mfcc / np.max(np.abs(mfcc))
+            mfcc /= np.max(np.abs(mfcc))
         # filter_banks -= (np.mean(filter_banks, axis=0) + 1e-8)
 
         # print "  sample rate:", sample_rate
@@ -136,6 +143,7 @@ class MFCC_Generator(object):
 
         # plt.show()
 
+        self.calculated_coeffs[sound_file] = mfcc
         return mfcc
 
 class CSVReader(object):
@@ -164,11 +172,7 @@ class CSVReader(object):
         sound_name = self.sound_name_from_file(f_name)
         return self.times[sound_name]
 
-
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-
-
-class Trainer(object):
+class TF_Trainer(object):
 
     time_data_csv_file = 'vowels/timedata.csv'
 
@@ -184,122 +188,155 @@ class Trainer(object):
     # uh
     # uw
 
-    vowels = [ "ae", "ah", "aw", "eh", "ei", "er", "ih", "iy", "oa", "oo", "uh", "uw" ]
+    # vowels = [ "ae", "ah", "aw", "eh", "ei", "er", "ih", "iy", "oa", "oo", "uh", "uw" ]
 
     def __init__(self, training_vowels):
 
-        self.mcf_coeffs = []
-        self.classifier = []
+        self.train_data = []
+        self.test_data = []
+        self.train_classifications = []
+        self.test_classifications = []
 
         self.training_vowels = training_vowels
         self.training_vowels_accuracy = [] # [[vowel 1 correct cnt, vowel 1 err count],[vowel2 correct cnt, vowel2 err count],..]
 
-        self.csv_reader = CSVReader(Trainer.time_data_csv_file)
+        self.mfcc_generator = MFCC_Generator()
 
     def get_vowels(self):
         return self.training_vowels
 
-    def train(self, pct_to_train=.9, method="SVC"):
+    def tf_format_mfccoeffs(self, coeffs, coeff_vectors_to_include=6, interprolate_coeffs=False, interprolated_array_len=6, debug=False):
+
+        '''
+        :summary If interprolate_coeffs is False, the first coeff_vectors_to_include vectors from coeffs are returned as
+                 a numpy array.
+                 If interprolate_coeffs is True, the function returns an array of length interprolated_array_len vectors
+                 which are linearly interprolated from coeffs
+        :param coeffs:
+        :param coeff_vectors_to_include:
+        :param interprolate_coeffs:
+        :param debug:
+        :return:
+        '''
+
+        if not interprolate_coeffs:
+            ret = []
+            for i in range(coeff_vectors_to_include):
+                ret.append(coeffs[i])
+            return np.array(ret)
+
+        t = np.linspace(0, 10, len(coeffs))
+        t_new = np.linspace(0, 10, interprolated_array_len)
+        f = interp1d(t, coeffs, axis=0)
+        coeffs_new = f(t_new)
+        return coeffs_new
+
+    def train_predict(self, pct_to_train=.8, coeff_vectors_to_include=15, interprolate_coeffs=False, interprolated_array_len=15, normalize_mfccs=True, debug=False, plot_epoch_acc=False, epochs=15):
 
         directory = "vowels/audioclips"
 
-        # only add if # > min_num_to_test
-        rand_int_min = 0
-
         for sound_name in os.listdir(directory):
-
             sound_name_no_wav = sound_name.split('.')[0]
-            file_name = directory+"/"+sound_name
-
+            file_name = directory + "/" + sound_name
             for vowel in self.training_vowels:
+                if vowel in sound_name_no_wav:
 
-                if vowel in sound_name_no_wav and int(sound_name_no_wav[1:3]) > (1.0-pct_to_train)*50:
+                    ret = self.mfcc_generator.calculate_mfc_coeffs(file_name, normalize=normalize_mfccs)
+                    data = self.tf_format_mfccoeffs(ret, coeff_vectors_to_include=coeff_vectors_to_include, interprolate_coeffs=interprolate_coeffs, interprolated_array_len=interprolated_array_len)
 
-                    start_end_t = self.csv_reader.get_start_end_time_from_fname(file_name)
-                    mfcc_generator = MFCC_Generator(file_name, start_end_t)
-                    ret = mfcc_generator.calculate_mfc_coeffs()
-                    for mcf_coeff in ret:
-                        if random.randint(0,1000) > rand_int_min:
-                            self.mcf_coeffs.append(mcf_coeff)
-                            classifier_num = self.training_vowels.index(vowel)
-                            self.classifier.append(classifier_num)
-
-        if method == "SVC":
-            clf = svm.SVC(gamma='scale')
-        elif method == "LDA":
-            clf = LinearDiscriminantAnalysis(solver='lsqr')
-        elif method == "SVR":
-            clf = svm.SVC(gamma='scale')
-        elif method == 'LinearSVC':
-            clf = svm.LinearSVC()
-        elif method == 'LinearSVR':
-            clf = svm.LinearSVR()
-        elif method == 'NuSVC':
-            clf = svm.NuSVC(gamma='scale')
-        elif method == 'NuSVR':
-            clf = svm.NuSVR(gamma='scale')
-        # elif method == 'OneClassSVM':
-        #     clf = svm.OneClassSVM(gamma='scale')
-        else:
-            return
-
-        clf.fit(self.mcf_coeffs, self.classifier)
-
-        for i in self.training_vowels:
-            self.training_vowels_accuracy.append([0,0])
-
-        for sound_name in os.listdir(directory):
-
-            sound_name_no_wav = sound_name.split('.')[0]
-            file_name = directory+"/"+sound_name
-
-            for vowel in self.training_vowels:
-
-                if vowel in sound_name_no_wav and int(sound_name_no_wav[1:3]) < (1.0-pct_to_train)*50:
-
-                    start_end_t = self.csv_reader.get_start_end_time_from_fname(file_name)
-                    mfcc_generator = MFCC_Generator(file_name, start_end_t)
-                    ret = mfcc_generator.calculate_mfc_coeffs()
                     classifier_num = self.training_vowels.index(vowel)
 
+                    # TODO: Randomly sample from files, dont use >
+                    if int(sound_name_no_wav[1:3]) > (1.0 - pct_to_train) * 50:
+                        self.train_data.append(data)
+                        self.train_classifications.append(classifier_num)
+                    else:
+                        self.test_data.append(data)
+                        self.test_classifications.append(classifier_num)
 
-                    for coeff in ret:
+        test_data = np.array(self.test_data)
+        training_data = np.array(self.train_data)
+        num_classes = len(self.training_vowels)
+        if not interprolate_coeffs:
+            test_data = test_data.reshape(test_data.shape[0], coeff_vectors_to_include, 12, 1)
+            training_data = training_data.reshape(training_data.shape[0], coeff_vectors_to_include, 12, 1)
+            input_shape = (coeff_vectors_to_include, 12, 1)
+        else:
+            test_data = test_data.reshape(test_data.shape[0], interprolated_array_len, 12, 1)
+            training_data = training_data.reshape(training_data.shape[0], interprolated_array_len, 12, 1)
+            input_shape = (interprolated_array_len, 12, 1)
 
-                        prediction = clf.predict([coeff])[0]
+        model = keras.Sequential([
+            keras.layers.Conv2D(32, kernel_size=(2, 2),  activation='relu', input_shape=input_shape),
+            keras.layers.Conv2D(64, (3, 3), activation='relu'),
+            keras.layers.Dropout(0.25),
+            keras.layers.Flatten(),
+            keras.layers.Dense(128, activation='relu'),
+            keras.layers.Dense(num_classes, activation='softmax')
+        ])
 
-                        # continuous prediction -> need to map
-                        if not prediction == int(prediction):
-                            # print "original prediction:",prediction
-                            best_fitting_vowel_id = -1
-                            best_fitting_vowel_dist = 1000
-                            for i in range(len(self.training_vowels)):
-                                if np.abs(i-prediction) < best_fitting_vowel_dist:
-                                    best_fitting_vowel_dist = np.abs(i-prediction)
-                                    best_fitting_vowel_id = i
-                            prediction = best_fitting_vowel_id
-                            # print "mapped prediction:",prediction
+        verbose = 0
+        if debug: verbose = 1
+        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
-                        if prediction == classifier_num:
-                            self.training_vowels_accuracy[classifier_num][0] += 1
-                        else:
-                            self.training_vowels_accuracy[classifier_num][1] += 1
+        # TODO: save training accuracy history
+        history = model.fit(training_data, self.train_classifications, epochs=50, verbose=verbose)
 
-                        # print vowel,": prediction:",prediction,"\tcorrect:",classifier_num,"training vowel accuracy:",self.training_vowels_accuracy
-                        # time.sleep(.1)
+        if plot_epoch_acc:
+            print(history.history['acc'])
+            print(history.history.keys())
+            #  "Accuracy"
+            plt.plot(history.history['acc'])
+            # plt.plot(history.history['loss'])
+            # plt.plot(history.history['val_acc'])
+            plt.title('model accuracy')
+            plt.ylabel('accuracy')
+            plt.xlabel('epoch')
+            plt.legend(['accuracy', 'loss'], loc='upper left')
+            plt.show()
+            # "Loss"
+            # plt.plot(history.history['loss'])
+            # plt.title('model loss')
+            # plt.ylabel('loss')
+            # plt.xlabel('epoch')
+            # plt.legend(['loss'], loc='upper left')
+            # plt.show()
 
+        training_accuracy = history.history['acc']
+        # print(training_accuracy)
 
-        return self.training_vowels_accuracy
+        # test_loss, test_acc = model.evaluate(test_data, self.test_classifications, verbose=verbose)
+        # if debug: print('Test accuracy:', test_acc, "test_loss:",test_loss)
+
+        for _ in self.training_vowels:
+            self.training_vowels_accuracy.append([0,0])
+
+        for i in range(len(self.test_data)):
+            if not interprolate_coeffs:
+                test_data = np.array(self.test_data[i]).reshape(1, coeff_vectors_to_include, 12, 1)
+            else:
+                test_data = np.array(self.test_data[i]).reshape(1, interprolated_array_len, 12, 1)
+
+            prediction = np.argmax(model.predict(test_data))
+            # print("prediction:",prediction, " correct: ",self.test_classifications[i])
+            if prediction == self.test_classifications[i]:
+                self.training_vowels_accuracy[self.test_classifications[i]][0] += 1
+            else:
+                self.training_vowels_accuracy[self.test_classifications[i]][1] += 1
+
+        # return test_acc, self.training_vowels_accuracy
+        return training_accuracy, self.training_vowels_accuracy
 
 def test_method(trainer, method, vowels, pct_to_train=.75):
 
-    print "\nmethod:", method
-    res = trainer.train(pct_to_train=pct_to_train, method=method)
+    print("\nmethod:", method)
+    res = trainer.train_predict(pct_to_train=pct_to_train, method=method)
     for i in range(len(res)):
         vowel = vowels[i]
         corr_cnt = res[i][0]
         err_cnt = res[i][1]
         corr_pct = corr_cnt/float(corr_cnt + err_cnt)
-        print "  ",vowel," corr %:",corr_pct
+        print("  ",vowel," corr %:",corr_pct)
 
 if __name__ == "__main__":
 
@@ -311,18 +348,112 @@ if __name__ == "__main__":
     # LinearSVC and LinearSVR perform very poorly
     # LDA is not working as expected, only predicts '1'
 
+    # for method in [ 'NuSVC', 'NuSVR', 'SVC', 'SVR']:
+    #     trainer = SciKit_Trainer(training_vowels)
+    #     test_method(trainer, method, training_vowels)
 
-    training_vowels = ["oa", "er"] #[ "ae", "ah", "aw", "eh", "ei", "er", "ih", "iy", "oa", "oo", "uh", "uw" ]
+    # trainer = SciKit_Trainer(training_vowels)
+    # trainer.train_predict()
 
-    for method in [ 'NuSVC', 'NuSVR', 'SVC', 'SVR']:
-        trainer = Trainer(training_vowels)
-        test_method(trainer, method, training_vowels)
+    # --------------------------------------------------------------------------------------------- tensorflow classification
+
+    def print_training_batch_accuracy(training_vowels, n, accuracies ):
+        print_str = "   training batch "+str(n)+" with training vowels "+ str(training_vowels) + " [corr,err]: "
+        for acc_err in accuracies:
+            print_str += str(acc_err[0])+" "+str(acc_err[1])+",\t"
+        print(print_str)
+
+    def print_settings(training_vowels, pcd_to_train, normalize, interprolate, num_training_batches):
+        print("training vowels:",training_vowels)
+        print("training %:",pcd_to_train)
+        print("normalize:",normalize)
+        print("interprolate:",interprolate)
+        print("number of training batches:",num_training_batches)
+        print()
+
+    def print_full_batch_accuracy(iterating_val, training_vowel_accuracy, round_=6, batch_time=-1.0):
+        print_str = "\nfor iterating val: "+ str(iterating_val) + " ave accuracy: "
+        for tv_i in range(training_vowel_accuracy.shape[0]):
+            print_str += str( round(training_vowel_accuracy[tv_i, :].mean(),round_) ) +" ± " + str( round(training_vowel_accuracy[tv_i, :].std(),round_) ) +",\t"
+        print_str += "    ave batch time:"+str(batch_time)
+        print(print_str)
+        print_str = "                             "
+        for tv_i in range(training_vowel_accuracy.shape[0]):
+            print_str += str( round(training_vowel_accuracy[tv_i, :].mean(),round_) ) +"\t" + str( round(training_vowel_accuracy[tv_i, :].std(),round_) ) +"\t"
+        print_str += "\n---\n"
+        print(print_str)
+
+    # [ "ae", "ah", "aw", "eh", "ei", "er", "ih", "iy", "oa", "oo", "uh", "uw" ]
+    training_vowels = ["oa","iy", "oo", "er"]
+
+    round_ = 5
+    pct_to_train = .85
+
+    # normalize_mfccs = False
+    num_training_batches = 5
+    INTERPROLATE = True
 
 
-    # trainer = Trainer(training_vowels)
-    # test_method(trainer,"LDA", training_vowels)
 
 
+    acc, training_vowel_accuracy_i = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
+                                                                               normalize_mfccs=True,
+                                                                               coeff_vectors_to_include=6,
+                                                                               debug=True,
+                                                                               plot_epoch_acc=True)
+
+    for normalize_mfccs in [True]:
+
+        print("\n >> Starting new hyperparameter sweep\n-------------------------------\n")
+
+        accuracy_stddev_batcht = []
+
+        # Iterate over interprolation lengths
+        for iterating_val in range(4, 15):
+
+            training_vowel_accuracy = np.zeros((len(training_vowels), num_training_batches))
+
+            batcht_start = time.time()
+
+            # perform n training_batches for each interprolation length
+            for n in range(num_training_batches):
+
+                # get accuracy for each vowel
+                if INTERPROLATE:
+                    acc, training_vowel_accuracy_i = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
+                                                                                               interprolate_coeffs=True,
+                                                                                               interprolated_array_len=iterating_val,
+                                                                                               normalize_mfccs=normalize_mfccs)
+                else:
+                    acc, training_vowel_accuracy_i = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
+                                                                                               normalize_mfccs=normalize_mfccs,
+                                                                                               coeff_vectors_to_include=iterating_val)
+
+                for tv_i in range(len(training_vowels)):
+                    vowel_accuracy = 100*training_vowel_accuracy_i[tv_i][0]/(training_vowel_accuracy_i[tv_i][0]+training_vowel_accuracy_i[tv_i][1])
+                    training_vowel_accuracy[tv_i, n] = vowel_accuracy
+
+                print_training_batch_accuracy(training_vowels, n, training_vowel_accuracy_i )
+
+            time_p_batch = (time.time()-batcht_start)/num_training_batches
+            print_full_batch_accuracy(iterating_val, training_vowel_accuracy, batch_time=time_p_batch, round_=round_)
+
+            acc_std_t_i = [iterating_val]
+            for tv_i in range(training_vowel_accuracy.shape[0]):
+                acc_std_t_i.append(training_vowel_accuracy[tv_i, :].mean())
+                acc_std_t_i.append(training_vowel_accuracy[tv_i, :].std())
+            acc_std_t_i.append(time_p_batch)
+            accuracy_stddev_batcht.append(acc_std_t_i)
+
+        print("__________________________________\nResults:")
+        print_settings(training_vowels, pct_to_train, normalize_mfccs, INTERPROLATE, num_training_batches)
+
+        for acc_std_t_i in accuracy_stddev_batcht:
+            print_str = ""
+            for i in acc_std_t_i:
+                print_str += str(round(i,round_))+ "\t"
+            print(print_str)
+        print("__________________________________")
 
 
 
