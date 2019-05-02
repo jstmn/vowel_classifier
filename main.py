@@ -361,13 +361,8 @@ if __name__ == "__main__":
     def print_batch_accuracy(iterating_val, training_vowel_accuracy, round_=6, batch_time=-1.0):
         print_str = "  for iterating val: "+ str(iterating_val) + " ave accuracy: "
         for tv_i in range(training_vowel_accuracy.shape[0]):
-            print_str += str( round(training_vowel_accuracy[tv_i].mean(),round_) ) +" ± " + str( round(training_vowel_accuracy[tv_i].std(),round_) ) +",\t"
+            print_str += str( round(training_vowel_accuracy[tv_i],round_) )+",\t"
         print_str += "    ave batch time: "+str(round(batch_time,round_))
-        # print(print_str)
-        # print_str = "                             "
-        # for tv_i in range(training_vowel_accuracy.shape[0]):
-        #     print_str += str( round(training_vowel_accuracy[tv_i].mean(),round_) ) +"\t" + str( round(training_vowel_accuracy[tv_i].std(),round_) ) +"\t"
-        # print_str += "\n---\n"
         print(print_str)
 
     # [ "ae", "ah", "aw", "eh", "ei", "er", "ih", "iy", "oa", "oo", "uh", "uw" ]
@@ -406,15 +401,12 @@ if __name__ == "__main__":
             vowel_accuracy = 100*testing_vowels_corr_err[tv_i][0]/(testing_vowels_corr_err[tv_i][0]+testing_vowels_corr_err[tv_i][1])
             training_vowel_accuracy[tv_i] = vowel_accuracy
 
-            # print_training_batch_accuracy(training_vowels, n, training_vowel_accuracy_i )
-
         time_p_batch = time.time()-batcht_start
         print_batch_accuracy(iterating_val, training_vowel_accuracy, batch_time=time_p_batch, round_=round_)
 
         acc_std_t_i = [iterating_val]
         for tv_i in range(training_vowel_accuracy.shape[0]):
             acc_std_t_i.append(training_vowel_accuracy[tv_i].mean())
-            acc_std_t_i.append(training_vowel_accuracy[tv_i].std())
         acc_std_t_i.append(time_p_batch)
         accuracy_stddev_batcht.append(acc_std_t_i)
 
