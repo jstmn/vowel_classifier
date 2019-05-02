@@ -198,7 +198,7 @@ class TF_Trainer(object):
         self.test_classifications = []
 
         self.training_vowels = training_vowels
-        self.training_vowels_accuracy = [] # [[vowel 1 correct cnt, vowel 1 err count],[vowel2 correct cnt, vowel2 err count],..]
+        self.testing_vowels_corr_err = [] # [[vowel 1 correct cnt, vowel 1 err count],[vowel2 correct cnt, vowel2 err count],..]
 
         self.mfcc_generator = MFCC_Generator()
 
@@ -231,7 +231,7 @@ class TF_Trainer(object):
         coeffs_new = f(t_new)
         return coeffs_new
 
-    def train_predict(self, pct_to_train=.8, coeff_vectors_to_include=15, interprolate_coeffs=False, interprolated_array_len=15, normalize_mfccs=True, debug=False, plot_epoch_acc=False, epochs=15):
+    def train_predict(self, pct_to_train=.8, coeff_vectors_to_include=15, interprolate_coeffs=False, interprolated_array_len=15, normalize_mfccs=True, debug=False, plot_epoch_acc=False, epochs=30):
 
         directory = "vowels/audioclips"
 
@@ -280,7 +280,7 @@ class TF_Trainer(object):
         model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
         # TODO: save training accuracy history
-        history = model.fit(training_data, self.train_classifications, epochs=50, verbose=verbose)
+        history = model.fit(training_data, self.train_classifications, epochs=epochs, verbose=verbose)
 
         if plot_epoch_acc:
             print(history.history['acc'])
@@ -309,7 +309,7 @@ class TF_Trainer(object):
         # if debug: print('Test accuracy:', test_acc, "test_loss:",test_loss)
 
         for _ in self.training_vowels:
-            self.training_vowels_accuracy.append([0,0])
+            self.testing_vowels_corr_err.append([0, 0])
 
         for i in range(len(self.test_data)):
             if not interprolate_coeffs:
@@ -320,12 +320,12 @@ class TF_Trainer(object):
             prediction = np.argmax(model.predict(test_data))
             # print("prediction:",prediction, " correct: ",self.test_classifications[i])
             if prediction == self.test_classifications[i]:
-                self.training_vowels_accuracy[self.test_classifications[i]][0] += 1
+                self.testing_vowels_corr_err[self.test_classifications[i]][0] += 1
             else:
-                self.training_vowels_accuracy[self.test_classifications[i]][1] += 1
+                self.testing_vowels_corr_err[self.test_classifications[i]][1] += 1
 
         # return test_acc, self.training_vowels_accuracy
-        return training_accuracy, self.training_vowels_accuracy
+        return training_accuracy, self.testing_vowels_corr_err
 
 def test_method(trainer, method, vowels, pct_to_train=.75):
 
@@ -344,43 +344,30 @@ if __name__ == "__main__":
     # sound_name: 'b03ei'
     # file_name: 'vowels/audioclips/m01ae.wav'
     # about ~ 30 length 12 vectors for average mfc_coeffs output
-    # all methods: ['LinearSVC',  'LinearSVR',   'NuSVC', 'NuSVR', 'SVC', 'SVR', "LDA"
-    # LinearSVC and LinearSVR perform very poorly
-    # LDA is not working as expected, only predicts '1'
+    #
+    # def print_training_batch_accuracy(training_vowels, n, accuracies ):
+    #     print_str = "   training batch "+str(n)+" with training vowels "+ str(training_vowels) + " [corr,err]: "
+    #     for acc_err in accuracies:
+    #         print_str += str(acc_err[0])+" "+str(acc_err[1])+",\t"
+    #     print(print_str)
 
-    # for method in [ 'NuSVC', 'NuSVR', 'SVC', 'SVR']:
-    #     trainer = SciKit_Trainer(training_vowels)
-    #     test_method(trainer, method, training_vowels)
-
-    # trainer = SciKit_Trainer(training_vowels)
-    # trainer.train_predict()
-
-    # --------------------------------------------------------------------------------------------- tensorflow classification
-
-    def print_training_batch_accuracy(training_vowels, n, accuracies ):
-        print_str = "   training batch "+str(n)+" with training vowels "+ str(training_vowels) + " [corr,err]: "
-        for acc_err in accuracies:
-            print_str += str(acc_err[0])+" "+str(acc_err[1])+",\t"
-        print(print_str)
-
-    def print_settings(training_vowels, pcd_to_train, normalize, interprolate, num_training_batches):
+    def print_settings(training_vowels, pcd_to_train, normalize, interprolate):
         print("training vowels:",training_vowels)
         print("training %:",pcd_to_train)
         print("normalize:",normalize)
         print("interprolate:",interprolate)
-        print("number of training batches:",num_training_batches)
         print()
 
-    def print_full_batch_accuracy(iterating_val, training_vowel_accuracy, round_=6, batch_time=-1.0):
-        print_str = "\nfor iterating val: "+ str(iterating_val) + " ave accuracy: "
+    def print_batch_accuracy(iterating_val, training_vowel_accuracy, round_=6, batch_time=-1.0):
+        print_str = "  for iterating val: "+ str(iterating_val) + " ave accuracy: "
         for tv_i in range(training_vowel_accuracy.shape[0]):
-            print_str += str( round(training_vowel_accuracy[tv_i, :].mean(),round_) ) +" ± " + str( round(training_vowel_accuracy[tv_i, :].std(),round_) ) +",\t"
-        print_str += "    ave batch time:"+str(batch_time)
-        print(print_str)
-        print_str = "                             "
-        for tv_i in range(training_vowel_accuracy.shape[0]):
-            print_str += str( round(training_vowel_accuracy[tv_i, :].mean(),round_) ) +"\t" + str( round(training_vowel_accuracy[tv_i, :].std(),round_) ) +"\t"
-        print_str += "\n---\n"
+            print_str += str( round(training_vowel_accuracy[tv_i].mean(),round_) ) +" ± " + str( round(training_vowel_accuracy[tv_i].std(),round_) ) +",\t"
+        print_str += "    ave batch time: "+str(round(batch_time,round_))
+        # print(print_str)
+        # print_str = "                             "
+        # for tv_i in range(training_vowel_accuracy.shape[0]):
+        #     print_str += str( round(training_vowel_accuracy[tv_i].mean(),round_) ) +"\t" + str( round(training_vowel_accuracy[tv_i].std(),round_) ) +"\t"
+        # print_str += "\n---\n"
         print(print_str)
 
     # [ "ae", "ah", "aw", "eh", "ei", "er", "ih", "iy", "oa", "oo", "uh", "uw" ]
@@ -388,72 +375,128 @@ if __name__ == "__main__":
 
     round_ = 5
     pct_to_train = .85
+    num_epochs = 45
 
-    # normalize_mfccs = False
-    num_training_batches = 5
+    normalize_mfccs = False
     INTERPROLATE = True
 
+    iterating_val_min, iterating_val_max =  5, 20
+    total_runs = iterating_val_max - iterating_val_min
+    accuracy_stddev_batcht = []
+
+    for iterating_val in range(iterating_val_min, iterating_val_max):
+
+        training_vowel_accuracy = np.zeros(len(training_vowels))
+        batcht_start = time.time()
+
+        # get accuracy for each vowel
+        if INTERPROLATE:
+            acc, testing_vowels_corr_err = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
+                                                                                       interprolate_coeffs=True,
+                                                                                       interprolated_array_len=iterating_val,
+                                                                                       normalize_mfccs=normalize_mfccs,
+                                                                                       epochs=num_epochs)
+        else:
+            acc, testing_vowels_corr_err = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
+                                                                                       normalize_mfccs=normalize_mfccs,
+                                                                                       coeff_vectors_to_include=iterating_val,
+                                                                                       epochs=num_epochs)
+
+        for tv_i in range(len(training_vowels)):
+            vowel_accuracy = 100*testing_vowels_corr_err[tv_i][0]/(testing_vowels_corr_err[tv_i][0]+testing_vowels_corr_err[tv_i][1])
+            training_vowel_accuracy[tv_i] = vowel_accuracy
+
+            # print_training_batch_accuracy(training_vowels, n, training_vowel_accuracy_i )
+
+        time_p_batch = time.time()-batcht_start
+        print_batch_accuracy(iterating_val, training_vowel_accuracy, batch_time=time_p_batch, round_=round_)
+
+        acc_std_t_i = [iterating_val]
+        for tv_i in range(training_vowel_accuracy.shape[0]):
+            acc_std_t_i.append(training_vowel_accuracy[tv_i].mean())
+            acc_std_t_i.append(training_vowel_accuracy[tv_i].std())
+        acc_std_t_i.append(time_p_batch)
+        accuracy_stddev_batcht.append(acc_std_t_i)
+
+    print("__________________________________\nResults:")
+    print_settings(training_vowels, pct_to_train, normalize_mfccs, INTERPROLATE)
+
+    for acc_std_t_i in accuracy_stddev_batcht:
+        print_str = ""
+        for i in acc_std_t_i:
+            print_str += str(round(i,round_))+ "\t"
+        print(print_str)
 
 
 
-    acc, training_vowel_accuracy_i = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
-                                                                               normalize_mfccs=True,
-                                                                               coeff_vectors_to_include=6,
-                                                                               debug=True,
-                                                                               plot_epoch_acc=True)
 
-    for normalize_mfccs in [True]:
 
-        print("\n >> Starting new hyperparameter sweep\n-------------------------------\n")
 
-        accuracy_stddev_batcht = []
 
-        # Iterate over interprolation lengths
-        for iterating_val in range(4, 15):
 
-            training_vowel_accuracy = np.zeros((len(training_vowels), num_training_batches))
 
-            batcht_start = time.time()
 
-            # perform n training_batches for each interprolation length
-            for n in range(num_training_batches):
 
-                # get accuracy for each vowel
-                if INTERPROLATE:
-                    acc, training_vowel_accuracy_i = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
-                                                                                               interprolate_coeffs=True,
-                                                                                               interprolated_array_len=iterating_val,
-                                                                                               normalize_mfccs=normalize_mfccs)
-                else:
-                    acc, training_vowel_accuracy_i = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
-                                                                                               normalize_mfccs=normalize_mfccs,
-                                                                                               coeff_vectors_to_include=iterating_val)
 
-                for tv_i in range(len(training_vowels)):
-                    vowel_accuracy = 100*training_vowel_accuracy_i[tv_i][0]/(training_vowel_accuracy_i[tv_i][0]+training_vowel_accuracy_i[tv_i][1])
-                    training_vowel_accuracy[tv_i, n] = vowel_accuracy
 
-                print_training_batch_accuracy(training_vowels, n, training_vowel_accuracy_i )
 
-            time_p_batch = (time.time()-batcht_start)/num_training_batches
-            print_full_batch_accuracy(iterating_val, training_vowel_accuracy, batch_time=time_p_batch, round_=round_)
 
-            acc_std_t_i = [iterating_val]
-            for tv_i in range(training_vowel_accuracy.shape[0]):
-                acc_std_t_i.append(training_vowel_accuracy[tv_i, :].mean())
-                acc_std_t_i.append(training_vowel_accuracy[tv_i, :].std())
-            acc_std_t_i.append(time_p_batch)
-            accuracy_stddev_batcht.append(acc_std_t_i)
 
-        print("__________________________________\nResults:")
-        print_settings(training_vowels, pct_to_train, normalize_mfccs, INTERPROLATE, num_training_batches)
 
-        for acc_std_t_i in accuracy_stddev_batcht:
-            print_str = ""
-            for i in acc_std_t_i:
-                print_str += str(round(i,round_))+ "\t"
-            print(print_str)
-        print("__________________________________")
+    # for normalize_mfccs in [True]:
+    #
+    #     print("\n >> Starting new hyperparameter sweep\n-------------------------------\n")
+    #
+    #     accuracy_stddev_batcht = []
+    #
+    #     # Iterate over interprolation lengths
+    #     for iterating_val in range(4, 15):
+    #
+    #         training_vowel_accuracy = np.zeros((len(training_vowels), num_training_batches))
+    #
+    #         batcht_start = time.time()
+    #
+    #         # perform n training_batches for each interprolation length
+    #         for n in range(num_training_batches):
+    #
+    #             # get accuracy for each vowel
+    #             if INTERPROLATE:
+    #                 acc, training_vowel_accuracy_i = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
+    #                                                                                            interprolate_coeffs=True,
+    #                                                                                            interprolated_array_len=iterating_val,
+    #                                                                                            normalize_mfccs=normalize_mfccs,
+    #                                                                                            epochs=num_epochs)
+    #             else:
+    #                 acc, training_vowel_accuracy_i = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
+    #                                                                                            normalize_mfccs=normalize_mfccs,
+    #                                                                                            coeff_vectors_to_include=iterating_val,
+    #                                                                                            epochs=num_epochs)
+    #
+    #             for tv_i in range(len(training_vowels)):
+    #                 vowel_accuracy = 100*training_vowel_accuracy_i[tv_i][0]/(training_vowel_accuracy_i[tv_i][0]+training_vowel_accuracy_i[tv_i][1])
+    #                 training_vowel_accuracy[tv_i, n] = vowel_accuracy
+    #
+    #             print_training_batch_accuracy(training_vowels, n, training_vowel_accuracy_i )
+    #
+    #         time_p_batch = (time.time()-batcht_start)/num_training_batches
+    #         print_full_batch_accuracy(iterating_val, training_vowel_accuracy, batch_time=time_p_batch, round_=round_)
+    #
+    #         acc_std_t_i = [iterating_val]
+    #         for tv_i in range(training_vowel_accuracy.shape[0]):
+    #             acc_std_t_i.append(training_vowel_accuracy[tv_i, :].mean())
+    #             acc_std_t_i.append(training_vowel_accuracy[tv_i, :].std())
+    #         acc_std_t_i.append(time_p_batch)
+    #         accuracy_stddev_batcht.append(acc_std_t_i)
+    #
+    #     print("__________________________________\nResults:")
+    #     print_settings(training_vowels, pct_to_train, normalize_mfccs, INTERPROLATE, num_training_batches)
+    #
+    #     for acc_std_t_i in accuracy_stddev_batcht:
+    #         print_str = ""
+    #         for i in acc_std_t_i:
+    #             print_str += str(round(i,round_))+ "\t"
+    #         print(print_str)
+    #     print("__________________________________")
 
 
 

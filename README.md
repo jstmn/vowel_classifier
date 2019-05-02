@@ -6,7 +6,7 @@ python3 project to classify vowels
  2) tensorflow (https://docs.anaconda.com/anaconda/user-guide/tasks/tensorflow/)
  
  ### todo
- - remove non 
+ - bloop blop
  
  ### Notes
  - For some reason running scikit classifiers fails completely when using python3

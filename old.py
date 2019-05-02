@@ -407,6 +407,20 @@ class MFCC_Generator(object):
         return mfcc
 
 
+
+    # all methods: ['LinearSVC',  'LinearSVR',   'NuSVC', 'NuSVR', 'SVC', 'SVR', "LDA"
+    # LinearSVC and LinearSVR perform very poorly
+    # LDA is not working as expected, only predicts '1'
+
+    # for method in [ 'NuSVC', 'NuSVR', 'SVC', 'SVR']:
+    #     trainer = SciKit_Trainer(training_vowels)
+    #     test_method(trainer, method, training_vowels)
+
+    # trainer = SciKit_Trainer(training_vowels)
+    # trainer.train_predict()
+
+    # --------------------------------------------------------------------------------------------- tensorflow classification
+
 class SciKit_Trainer(object):
 
     time_data_csv_file = 'vowels/timedata.csv'
