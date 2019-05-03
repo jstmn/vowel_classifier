@@ -335,15 +335,15 @@ class Trainer(object):
 def test_method(trainer, method, vowels, pct_to_train=.75):
     print "\nmethod:", method
 
-    for q in range(1, 3):
-        res = trainer.train(pct_to_train=pct_to_train, method=method, MYSPECIAL_UMBER=q)
-        print "number of vectors:", q
-        for i in range(len(res)):
-            vowel = vowels[i]
-            corr_cnt = res[i][0]
-            err_cnt = res[i][1]
-            corr_pct = corr_cnt/float(corr_cnt + err_cnt)
-            print "  ", vowel, " corr %:", corr_pct
+    q = 1
+    res = trainer.train(pct_to_train=pct_to_train, method=method, MYSPECIAL_UMBER=q)
+    print "number of vectors:", q
+    for i in range(len(res)):
+        vowel = vowels[i]
+        corr_cnt = res[i][0]
+        err_cnt = res[i][1]
+        corr_pct = corr_cnt/float(corr_cnt + err_cnt)
+        print "  ", vowel, " corr %:", corr_pct
 
 if __name__ == "__main__":
 
