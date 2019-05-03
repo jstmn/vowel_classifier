@@ -231,7 +231,7 @@ class TF_Trainer(object):
         coeffs_new = f(t_new)
         return coeffs_new
 
-    def train_predict(self, pct_to_train=.8, coeff_vectors_to_include=15, interprolate_coeffs=False, interprolated_array_len=15, normalize_mfccs=True, debug=False, plot_epoch_acc=False, epochs=30):
+    def train_predict(self, pct_to_train=.8, coeff_vectors_to_include=15, interprolate_coeffs=False, interprolated_array_len=15, normalize_mfccs=True, debug=False, plot_epoch_acc=False, epochs=30, plot_model=False):
 
         directory = "vowels/audioclips"
 
@@ -274,6 +274,12 @@ class TF_Trainer(object):
             keras.layers.Dense(128, activation='relu'),
             keras.layers.Dense(num_classes, activation='softmax')
         ])
+        plot_model = True
+        if plot_model:
+            from keras.utils import plot_model
+            plot_model(model, show_shapes=True)
+            print("saving model to png")
+            # time.sleep(10)
 
         verbose = 0
         if debug: verbose = 1
@@ -372,12 +378,19 @@ if __name__ == "__main__":
     pct_to_train = .85
     num_epochs = 45
 
-    normalize_mfccs = False
+    normalize_mfccs = True
     INTERPROLATE = True
 
-    iterating_val_min, iterating_val_max =  5, 20
+    iterating_val_min, iterating_val_max =  5, 10
     total_runs = iterating_val_max - iterating_val_min
     accuracy_stddev_batcht = []
+
+    # acc, testing_vowels_corr_err = TF_Trainer(training_vowels).train_predict(pct_to_train=pct_to_train,
+    #                                                                          interprolate_coeffs=True,
+    #                                                                          interprolated_array_len=10,
+    #                                                                          normalize_mfccs=normalize_mfccs,
+    #                                                                          epochs=num_epochs,
+    #                                                                          plot_epoch_acc=True)
 
     for iterating_val in range(iterating_val_min, iterating_val_max):
 
